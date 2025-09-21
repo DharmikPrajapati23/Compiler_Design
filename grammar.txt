@@ -1,3 +1,0 @@
-S -> aA | bc
-A -> x | y
-B -> b | c

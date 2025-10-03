@@ -646,37 +646,6 @@ if __name__ == "__main__":
         shown = ", ".join(sorted(follow[A]))
         print(f"Follow({A}) = {{ {shown} }}")
 
-    # # ---- Decide which table to use for parsing ----
-    # lr0_ok = (len(lr0_conflicts) == 0)
-    # slr_ok = (len(slr_conflicts) == 0)
-
-    # if slr_ok:
-    #     use_action, use_goto, use_terms, use_nts = SLR_ACTION, SLR_GOTO, slr_terms, slr_nts
-    #     table_name = "SLR(1)"
-    # elif lr0_ok:
-    #     use_action, use_goto, use_terms, use_nts = ACTION, GOTO, terms, nts
-    #     table_name = "LR(0)"
-    # else:
-    #     use_action = None
-    #     table_name = None
-
-    # if use_action is None:
-    #     print("\nBoth LR(0) and SLR(1) tables have conflicts. Parsing is disabled.")
-    # else:
-    #     print(f"\nUsing {table_name} table for parsing (no conflicts).")
-    #     try:
-    #         inp = input("\nEnter input string to parse (without $): ").strip()
-    #     except EOFError:
-    #         inp = ""
-    #     if inp:
-    #         trace = lr0_parse(inp, use_action, use_goto, use_terms, use_nts, states, Glst, S_dash)
-    #         print("\n{:<24} | {:<18} | {}".format("STATE STACK", "INPUT", "ACTION"))
-    #         print("-"*72)
-    #         for stack_str, input_str, act in trace:
-    #             print("{:<24} | {:<18} | {}".format(stack_str, input_str, act))
-
-
-
 
     # ---- Decide which traces to show ----
     lr0_ok = (len(lr0_conflicts) == 0)

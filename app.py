@@ -1056,24 +1056,246 @@
 
 
 
+# # app.py
+# # -*- coding: utf-8 -*-
+# import streamlit as st
+# import left_recursion
+# import left_factoring
+# import first_follow
+# import ll1  # make sure ll1.py is in the same folder
+
+# # -------------------- Validation --------------------
+
+# def validate_grammar_text(text: str):
+#     """
+#     Basic format checks:
+#     <NT> -> prod1 | prod2 | ...
+#     - exactly one '->' per non-empty line
+#     - LHS non-empty, no spaces
+#     - RHS non-empty; use 'ε' for empty
+#     """
+#     lines = [ln.rstrip() for ln in text.splitlines()]
+#     for idx, line in enumerate(lines, start=1):
+#         if not line.strip():
+#             continue
+#         if line.count("->") != 1:
+#             return False, f"Line {idx}: each rule must contain exactly one '->'."
+#         lhs, rhs = line.split("->", 1)
+#         lhs = lhs.strip()
+#         rhs = rhs.strip()
+#         if not lhs:
+#             return False, f"Line {idx}: left-hand side (nonterminal) is empty."
+#         if " " in lhs:
+#             return False, f"Line {idx}: nonterminal '{lhs}' must not contain spaces."
+#         if not rhs:
+#             return False, f"Line {idx}: right-hand side is empty."
+#         parts = [p.strip() for p in rhs.split("|")]
+#         if any(p == "" for p in parts):
+#             return False, f"Line {idx}: empty production found; use 'ε' for empty."
+#     return True, ""
+
+# # -------------------- Page --------------------
+
+# st.set_page_config(page_title="Grammar Toolkit", page_icon="🧩", layout="centered")
+# st.title("Grammar Toolkit")
+
+# st.write("Enter grammar rules (one per line). Use ε for epsilon and -> for productions.")
+
+# st.code("""Example:
+# S -> iEtS | iEtSeS | a
+# E -> b | ε
+# """, language="text")
+
+# st.caption("Quick copy symbols (use the copy buttons on the right):")
+# c1, c2 = st.columns(2)
+# with c1:
+#     st.code("ε", language="text")
+# with c2:
+#     st.code(" -> ", language="text")
+
+# # Persist input text
+# if "grammar_text" not in st.session_state:
+#     st.session_state.grammar_text = ""
+
+# st.session_state.grammar_text = st.text_area(
+#     "Grammar", value=st.session_state.grammar_text, height=220,
+#     placeholder="A -> aA | b\nB -> c | ε"
+# )
+
+# # Persist selected action
+# action = st.selectbox(
+#     "Select an operation",
+#     ["Remove left recursion", "Remove left factoring", "Find First and Follow", "LL(1) Table + Parse"],
+#     index=0,
+#     key="action"
+# )
+
+# # -------------------- Run Button --------------------
+
+# if st.button("Run", key="run_btn"):
+#     text = st.session_state.grammar_text if "grammar_text" in st.session_state else ""
+#     if not text or not text.strip():
+#         st.error("Please enter correct grammar. The input cannot be empty.")
+#         st.stop()
+
+#     ok, err = validate_grammar_text(text)
+#     if not ok:
+#         st.error(f"Please enter correct grammar. {err}")
+#         st.stop()
+
+#     # Save grammar persistently for modules
+#     with open("grammar.txt", "w", encoding="utf-8") as f:
+#         f.write(text)
+
+#     # Clear stale LL(1) cache on new Run
+#     st.session_state.pop("ll1", None)
+
+#     if action == "Remove left recursion":
+#         changed, outG, report = left_recursion.remove_left_recursion_if_any("grammar.txt")
+
+#         st.subheader("Left Recursion Check")
+#         msgs = []
+#         msgs.append("Direct left recursion detected." if report.get("has_direct") else "No direct left recursion.")
+#         msgs.append("Indirect left recursion suspected (cycles present)." if report.get("has_indirect") else "No indirect left recursion.")
+#         st.write("\n".join(msgs))
+
+#         if changed:
+#             st.subheader("Grammar after removing left recursion")
+#             for nt, prods in outG.items():
+#                 st.write(f"{nt} -> {' | '.join(prods)}")
+#         else:
+#             st.info("No left recursion in the given grammar. Nothing to remove.")
+
+#     elif action == "Remove left factoring":
+#         grammar = left_factoring.read_grammar_from_file("grammar.txt")
+#         factored = left_factoring.left_factoring(grammar)
+#         st.subheader("Grammar after left factoring")
+#         for nt, prods in factored.items():
+#             st.write(f"{nt} -> {' | '.join(prods)}")
+
+#     elif action == "Find First and Follow":
+#         grammar_list, changed_lr, shown_text = first_follow.load_prepare_remove_lr_if_needed("grammar.txt")
+
+#         st.subheader("Grammar used for FIRST/FOLLOW")
+#         st.text(shown_text)
+
+#         first = first_follow.compute_first(grammar_list)
+#         follow = first_follow.compute_follow(grammar_list, first)
+
+#         st.subheader("FIRST sets")
+#         for nt in first:
+#             shown = ", ".join(("∈" if s == "ε" else s) for s in sorted(first[nt], key=lambda v: (v == "ε", v)))
+#             st.write(f"First({nt}) = {{ {shown} }}")
+
+#         st.subheader("FOLLOW sets")
+#         for nt in follow:
+#             shown = ", ".join(("∈" if s == "ε" else s) for s in sorted(follow[nt], key=lambda v: (v == "ε", v)))
+#             st.write(f"Follow({nt}) = {{ {shown} }}")
+
+#     elif action == "LL(1) Table + Parse":
+#         # Build and cache LL(1) data
+#         G, notes, first, follow, table, conflicts, terms = ll1.construct_ll1("grammar.txt")
+#         st.session_state.ll1 = {
+#             "grammar_str": G,
+#             "notes": notes,
+#             "first": first,
+#             "follow": follow,
+#             "table": table,
+#             "conflicts": conflicts,
+#             "terms": terms,
+#         }
+
+# # -------------------- LL(1) Section (stable across reruns) --------------------
+
+# if st.session_state.get("action") == "LL(1) Table + Parse":
+#     state = st.session_state.get("ll1")
+#     if state:
+#         G = state["grammar_str"]
+#         notes = state["notes"]
+#         first = state["first"]
+#         follow = state["follow"]
+#         table = state["table"]
+#         conflicts = state["conflicts"]
+#         terms = state["terms"]
+
+#         st.subheader("Precondition checks")
+#         for n in notes:
+#             st.write(f"- {n}")
+
+#         st.subheader("Grammar used")
+#         for A, Ps in G.items():
+#             st.write(f"{A} -> {' | '.join(Ps)}")
+
+#         st.subheader("FIRST and FOLLOW")
+#         for A, S in first.items():
+#             shown = ", ".join(("∈" if x == "ε" else x) for x in sorted(S, key=lambda v: (v == "ε", v)))
+#             st.write(f"First({A}) = {{ {shown} }}")
+#         for A, S in follow.items():
+#             shown = ", ".join(("∈" if x == "ε" else x) for x in sorted(S, key=lambda v: (v == "ε", v)))
+#             st.write(f"Follow({A}) = {{ {shown} }}")
+
+#         # st.subheader("LL(1) Parsing Table")
+#         # st.text(ll1.pretty_table(table, terms))
+
+#         st.subheader("LL(1) Parsing Table")
+#         headers, rows = ll1.ll1_table_as_rows(table, terms)
+#         import pandas as pd
+#         df = pd.DataFrame(rows, columns=headers)
+#         st.table(df) # or st.dataframe(df, use_container_width=True)
+
+
+#         if conflicts:
+#             st.error("Conflicts detected (grammar is not LL(1)). Parsing is disabled.")
+#             for A, a, old, new in conflicts:
+#                 st.write(f"M[{A}, {a}] conflict between [{old}] and [{new}]")
+#         else:
+#             st.success("No conflicts; grammar appears LL(1).")
+#             parse_str = st.text_input("Enter input string to parse (without $)", key="parse_input")
+#             if st.button("Parse", key="parse_btn"):
+#                 if not parse_str.strip():
+#                     st.warning("Please enter a non-empty string.")
+#                 else:
+#                     accepted, steps = ll1.parse(table, G, terms, parse_str.strip())
+#                     st.subheader("Trace (Stack | Input | Action)")
+#                     # Display each step; align monospaced by wrapping in code
+#                     for stck, inp, act in steps:
+#                         st.code(f"{stck:<25} | {inp:<25} | {act}", language="text")
+#                     st.write(f"\nResult: {'ACCEPTED' if accepted else 'REJECTED'}")
+
+# st.caption("Develop by Dharmik...")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # app.py
 # -*- coding: utf-8 -*-
 import streamlit as st
 import left_recursion
 import left_factoring
 import first_follow
-import ll1  # make sure ll1.py is in the same folder
+import ll1  # LL(1) features
+import lr0_slr1 as lr  # LR(0)/SLR(1) features
+import pandas as pd
 
 # -------------------- Validation --------------------
-
 def validate_grammar_text(text: str):
-    """
-    Basic format checks:
-    <NT> -> prod1 | prod2 | ...
-    - exactly one '->' per non-empty line
-    - LHS non-empty, no spaces
-    - RHS non-empty; use 'ε' for empty
-    """
     lines = [ln.rstrip() for ln in text.splitlines()]
     for idx, line in enumerate(lines, start=1):
         if not line.strip():
@@ -1095,7 +1317,6 @@ def validate_grammar_text(text: str):
     return True, ""
 
 # -------------------- Page --------------------
-
 st.set_page_config(page_title="Grammar Toolkit", page_icon="🧩", layout="centered")
 st.title("Grammar Toolkit")
 
@@ -1125,13 +1346,18 @@ st.session_state.grammar_text = st.text_area(
 # Persist selected action
 action = st.selectbox(
     "Select an operation",
-    ["Remove left recursion", "Remove left factoring", "Find First and Follow", "LL(1) Table + Parse"],
+    [
+        "Remove left recursion",
+        "Remove left factoring",
+        "Find First and Follow",
+        "LL(1) Table + Parse",
+        "LR(0)/SLR(1) + Parse",  # NEW
+    ],
     index=0,
     key="action"
 )
 
 # -------------------- Run Button --------------------
-
 if st.button("Run", key="run_btn"):
     text = st.session_state.grammar_text if "grammar_text" in st.session_state else ""
     if not text or not text.strip():
@@ -1147,8 +1373,9 @@ if st.button("Run", key="run_btn"):
     with open("grammar.txt", "w", encoding="utf-8") as f:
         f.write(text)
 
-    # Clear stale LL(1) cache on new Run
+    # Clear caches on new run
     st.session_state.pop("ll1", None)
+    st.session_state.pop("lr", None)
 
     if action == "Remove left recursion":
         changed, outG, report = left_recursion.remove_left_recursion_if_any("grammar.txt")
@@ -1205,8 +1432,25 @@ if st.button("Run", key="run_btn"):
             "terms": terms,
         }
 
-# -------------------- LL(1) Section (stable across reruns) --------------------
+    elif action == "LR(0)/SLR(1) + Parse":
+        # Build canonical sets
+        Gaug, Glst, S_dash, S, states, trans = lr.build_lr0("grammar.txt")
+        nt_index, prod_index = lr.build_order_indices(Gaug)
 
+        # Build tables
+        ACTION0, GOTO0, terms0, nts0, lr0_conflicts = lr.build_lr0_table(Glst, S_dash, states, trans)
+        ACTION1, GOTO1, terms1, nts1, slr_conflicts, follow = lr.build_slr1_table(Glst, S_dash, states, trans)
+
+        # Cache everything
+        st.session_state.lr = {
+            "Gaug": Gaug, "Glst": Glst, "S_dash": S_dash, "S": S,
+            "states": states, "trans": trans, "nt_index": nt_index, "prod_index": prod_index,
+            "ACTION0": ACTION0, "GOTO0": GOTO0, "terms0": terms0, "nts0": nts0, "lr0_conflicts": lr0_conflicts,
+            "ACTION1": ACTION1, "GOTO1": GOTO1, "terms1": terms1, "nts1": nts1, "slr_conflicts": slr_conflicts,
+            "follow": follow,
+        }
+
+# -------------------- LL(1) Section (stable across reruns) --------------------
 if st.session_state.get("action") == "LL(1) Table + Parse":
     state = st.session_state.get("ll1")
     if state:
@@ -1227,22 +1471,17 @@ if st.session_state.get("action") == "LL(1) Table + Parse":
             st.write(f"{A} -> {' | '.join(Ps)}")
 
         st.subheader("FIRST and FOLLOW")
-        for A, S in first.items():
-            shown = ", ".join(("∈" if x == "ε" else x) for x in sorted(S, key=lambda v: (v == "ε", v)))
+        for A, Sset in first.items():
+            shown = ", ".join(("∈" if x == "ε" else x) for x in sorted(Sset, key=lambda v: (v == "ε", v)))
             st.write(f"First({A}) = {{ {shown} }}")
-        for A, S in follow.items():
-            shown = ", ".join(("∈" if x == "ε" else x) for x in sorted(S, key=lambda v: (v == "ε", v)))
+        for A, Sset in follow.items():
+            shown = ", ".join(("∈" if x == "ε" else x) for x in sorted(Sset, key=lambda v: (v == "ε", v)))
             st.write(f"Follow({A}) = {{ {shown} }}")
-
-        # st.subheader("LL(1) Parsing Table")
-        # st.text(ll1.pretty_table(table, terms))
 
         st.subheader("LL(1) Parsing Table")
         headers, rows = ll1.ll1_table_as_rows(table, terms)
-        import pandas as pd
         df = pd.DataFrame(rows, columns=headers)
-        st.table(df) # or st.dataframe(df, use_container_width=True)
-
+        st.table(df)
 
         if conflicts:
             st.error("Conflicts detected (grammar is not LL(1)). Parsing is disabled.")
@@ -1250,16 +1489,137 @@ if st.session_state.get("action") == "LL(1) Table + Parse":
                 st.write(f"M[{A}, {a}] conflict between [{old}] and [{new}]")
         else:
             st.success("No conflicts; grammar appears LL(1).")
-            parse_str = st.text_input("Enter input string to parse (without $)", key="parse_input")
-            if st.button("Parse", key="parse_btn"):
+            parse_str = st.text_input("Enter input string to parse (without $)", key="parse_input_ll1")
+            if st.button("Parse", key="parse_btn_ll1"):
                 if not parse_str.strip():
                     st.warning("Please enter a non-empty string.")
                 else:
                     accepted, steps = ll1.parse(table, G, terms, parse_str.strip())
                     st.subheader("Trace (Stack | Input | Action)")
-                    # Display each step; align monospaced by wrapping in code
                     for stck, inp, act in steps:
                         st.code(f"{stck:<25} | {inp:<25} | {act}", language="text")
                     st.write(f"\nResult: {'ACCEPTED' if accepted else 'REJECTED'}")
+
+# -------------------- LR(0)/SLR(1) Section (stable across reruns) --------------------
+if st.session_state.get("action") == "LR(0)/SLR(1) + Parse":
+    S = st.session_state.get("lr")
+    if S:
+        Gaug = S["Gaug"]; Glst = S["Glst"]; S_dash = S["S_dash"]; states = S["states"]; trans = S["trans"]
+        nt_index = S["nt_index"]; prod_index = S["prod_index"]
+        ACTION0 = S["ACTION0"]; GOTO0 = S["GOTO0"]; terms0 = S["terms0"]; nts0 = S["nts0"]; lr0_conflicts = S["lr0_conflicts"]
+        ACTION1 = S["ACTION1"]; GOTO1 = S["GOTO1"]; terms1 = S["terms1"]; nts1 = S["nts1"]; slr_conflicts = S["slr_conflicts"]
+        follow = S["follow"]
+
+        st.subheader("Augmented grammar")
+        for A, prods in Gaug.items():
+            st.write(f"{A} -> {' | '.join(prods)}")
+
+        st.subheader("Canonical LR(0) item sets")
+        for i, I in enumerate(states):
+            st.text(lr.state_to_str(i, I, nt_index, prod_index))
+
+        st.subheader("GOTO transitions")
+        st.text(lr.transitions_to_str(trans))
+
+        # LR(0) Table
+        st.subheader("LR(0) Parsing Table")
+        # Convert to DataFrame
+        action_cols0 = terms0 + ["$"]
+        goto_cols0 = [A for A in nts0 if A != nts0[0]]
+        rows0 = []
+        for i in range(len(ACTION0)):
+            rows0.append(
+                [f"I{i}"] +
+                [ACTION0[i].get(a, "") for a in action_cols0] +
+                [GOTO0[i].get(A, "") for A in goto_cols0]
+            )
+        # Build rows with string values only
+        action_cols0 = terms0 + ["$"]
+        goto_cols0 = [A for A in nts0 if A != nts0[0]]
+        rows0 = []
+        for i in range(len(ACTION0)):
+            row = [f"I{i}"]
+            row += [str(ACTION0[i].get(a, "")) for a in action_cols0]
+            row += [str(GOTO0[i].get(A, "")) for A in goto_cols0]
+            rows0.append(row)
+        cols0 = ["State"] + action_cols0 + goto_cols0
+        df0 = pd.DataFrame(rows0, columns=cols0, dtype="string")
+        st.table(df0)
+
+        # df0 = pd.DataFrame(rows0, columns=["State"] + action_cols0 + goto_cols0)
+        # st.table(df0)
+        if lr0_conflicts:
+            st.error("LR(0) conflicts present; entries may show shift/reduce or reduce/reduce collisions.")
+            for i, sym, old, new in lr0_conflicts:
+                st.write(f"I{i}, on '{sym}': {old} vs {new}")
+        else:
+            st.success("No conflicts in LR(0) table.")
+
+        # SLR(1) Table
+        st.subheader("SLR(1) Parsing Table")
+        action_cols1 = terms1 + ["$"]
+        goto_cols1 = [A for A in nts1 if A != nts1[0]]
+        rows1 = []
+        for i in range(len(ACTION1)):
+            rows1.append(
+                [f"I{i}"] +
+                [ACTION1[i].get(a, "") for a in action_cols1] +
+                [GOTO1[i].get(A, "") for A in goto_cols1]
+            )
+        action_cols1 = terms1 + ["$"]
+        goto_cols1 = [A for A in nts1 if A != nts1[0]]
+        rows1 = []
+        for i in range(len(ACTION1)):
+            row = [f"I{i}"]
+            row += [str(ACTION1[i].get(a, "")) for a in action_cols1]
+            row += [str(SLR_GOTO := GOTO1[i].get(A, "")) for A in goto_cols1]
+            rows1.append(row)
+        cols1 = ["State"] + action_cols1 + goto_cols1
+        df1 = pd.DataFrame(rows1, columns=cols1, dtype="string")
+        st.table(df1)
+
+        # df1 = pd.DataFrame(rows1, columns=["State"] + action_cols1 + goto_cols1)
+        # st.table(df1)
+        if slr_conflicts:
+            st.error("SLR(1) conflicts present; entries may show shift/reduce or reduce/reduce collisions.")
+            for i, sym, old, new in slr_conflicts:
+                st.write(f"I{i}, on '{sym}': {old} vs {new}")
+        else:
+            st.success("No conflicts in SLR(1) table.")
+
+        # FOLLOW sets (for SLR)
+        st.subheader("FOLLOW sets (SLR)")
+        for A, Sset in follow.items():
+            st.write(f"Follow({A}) = {{ {', '.join(sorted(Sset))} }}")
+
+        # Enable parsing if at least one table is conflict-free
+        lr0_ok = len(lr0_conflicts) == 0
+        slr_ok = len(slr_conflicts) == 0
+
+        if not lr0_ok and not slr_ok:
+            st.warning("Both LR(0) and SLR(1) tables have conflicts. Parsing is disabled.")
+        else:
+            parse_str2 = st.text_input("Enter input string to parse (without $)", key="parse_input_lr")
+            if st.button("Parse with LR tables", key="parse_btn_lr"):
+                if not parse_str2.strip():
+                    st.warning("Please enter a non-empty string.")
+                else:
+                    if lr0_ok:
+                        st.subheader("LR(0) parse trace")
+                        trace0 = lr.lr0_parse(parse_str2.strip(), ACTION0, GOTO0, terms0, nts0, states, Glst, S_dash)
+                        st.code(f"{'STATE STACK':<24} | {'INPUT':<18} | ACTION", language="text")
+                        for stck, inp, act in trace0:
+                            st.code(f"{stck:<24} | {inp:<18} | {act}", language="text")
+                    else:
+                        st.info("Skipping LR(0) parse due to conflicts.")
+
+                    if slr_ok:
+                        st.subheader("SLR(1) parse trace")
+                        trace1 = lr.lr0_parse(parse_str2.strip(), ACTION1, GOTO1, terms1, nts1, states, Glst, S_dash)
+                        st.code(f"{'STATE STACK':<24} | {'INPUT':<18} | ACTION", language="text")
+                        for stck, inp, act in trace1:
+                            st.code(f"{stck:<24} | {inp:<18} | {act}", language="text")
+                    else:
+                        st.info("Skipping SLR(1) parse due to conflicts.")
 
 st.caption("Develop by Dharmik...")

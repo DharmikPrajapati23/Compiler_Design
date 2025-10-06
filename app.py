@@ -1292,6 +1292,7 @@ import left_factoring
 import first_follow
 import ll1  # LL(1) features
 import lr0_slr1 as lr  # LR(0)/SLR(1) features
+import clr_lalr as clr  # NEW: CLR/LALR(1) features
 import pandas as pd
 
 # -------------------- Validation --------------------
@@ -1351,8 +1352,10 @@ action = st.selectbox(
         "Remove left factoring",
         "Find First and Follow",
         "LL(1) Table + Parse",
-        "LR(0)/SLR(1) + Parse",  # NEW
+        "LR(0)/SLR(1) + Parse",
+        "CLR/LALR(1) + Parse",  # NEW
     ],
+
     index=0,
     key="action"
 )
@@ -1449,6 +1452,47 @@ if st.button("Run", key="run_btn"):
             "ACTION1": ACTION1, "GOTO1": GOTO1, "terms1": terms1, "nts1": nts1, "slr_conflicts": slr_conflicts,
             "follow": follow,
         }
+    
+    
+    elif action == "CLR/LALR(1) + Parse":
+        # Build CLR/LALR artifacts
+        Gstr = clr.read_strings("grammar.txt")
+        Gaug, S_dash, S = clr.augment_grammar(Gstr)
+        Glst = clr.to_symbol_lists(Gaug)
+
+        # CLR canonical collection
+        first = clr.compute_first(Glst)
+        clr_states, clr_trans = clr.canonical_lr1(Glst, S_dash, first)
+
+        # Production numbering
+        prod_num, prod_list = clr.number_productions(Gaug, Glst)
+
+        # CLR table
+        ACTION_CLR, GOTO_CLR, terms, nts, clr_conf = clr.build_lr1_table(Glst, S_dash, clr_states, clr_trans, prod_num)
+
+        # Merge CLR -> LALR
+        (lalr_states, lalr_trans,
+         clr_to_merged_idx, merged_idx_to_label,
+         sequence_labels, merged_flag) = clr.merge_clr_with_labels(clr_states, clr_trans)
+
+        # LALR labeled table rows
+        ACTION_LALR, GOTO_LALR, terms2, nts2, lalr_conf, headers, rows = clr.build_lalr_table_labeled(
+            Glst, S_dash, lalr_states, lalr_trans, merged_idx_to_label, prod_num
+        )
+
+        # Cache everything
+        st.session_state.clr = {
+            "Gaug": Gaug, "Glst": Glst, "S_dash": S_dash, "S": S,
+            "first": first,
+            "clr_states": clr_states, "clr_trans": clr_trans,
+            "ACTION_CLR": ACTION_CLR, "GOTO_CLR": GOTO_CLR, "terms": terms, "nts": nts, "clr_conf": clr_conf,
+            "prod_num": prod_num, "prod_list": prod_list,
+            "lalr_states": lalr_states, "lalr_trans": lalr_trans,
+            "merged_idx_to_label": merged_idx_to_label, "sequence_labels": sequence_labels, "merged_flag": merged_flag,
+            "ACTION_LALR": ACTION_LALR, "GOTO_LALR": GOTO_LALR, "terms2": terms2, "nts2": nts2,
+            "lalr_conf": lalr_conf, "headers": headers, "rows": rows,
+        }
+
 
 # -------------------- LL(1) Section (stable across reruns) --------------------
 if st.session_state.get("action") == "LL(1) Table + Parse":
@@ -1621,5 +1665,107 @@ if st.session_state.get("action") == "LR(0)/SLR(1) + Parse":
                             st.code(f"{stck:<24} | {inp:<18} | {act}", language="text")
                     else:
                         st.info("Skipping SLR(1) parse due to conflicts.")
+
+
+
+
+# -------------------- CLR/LALR(1) Section (stable across reruns) --------------------
+if st.session_state.get("action") == "CLR/LALR(1) + Parse":
+    S = st.session_state.get("clr")
+    if S:
+        Gaug = S["Gaug"]; Glst = S["Glst"]; S_dash = S["S_dash"]
+        first = S["first"]
+        clr_states = S["clr_states"]; clr_trans = S["clr_trans"]
+        ACTION_CLR = S["ACTION_CLR"]; GOTO_CLR = S["GOTO_CLR"]; terms = S["terms"]; nts = S["nts"]; clr_conf = S["clr_conf"]
+        prod_list = S["prod_list"]
+        lalr_states = S["lalr_states"]; lalr_trans = S["lalr_trans"]
+        merged_idx_to_label = S["merged_idx_to_label"]; sequence_labels = S["sequence_labels"]; merged_flag = S["merged_flag"]
+        ACTION_LALR = S["ACTION_LALR"]; GOTO_LALR = S["GOTO_LALR"]; terms2 = S["terms2"]; nts2 = S["nts2"]; lalr_conf = S["lalr_conf"]
+        headers = S["headers"]; rows = S["rows"]
+
+        st.subheader("Augmented grammar")
+        for A, Ps in Gaug.items():
+            st.write(f"{A} -> {' | '.join(Ps)}")
+
+        st.subheader("CLR item sets (merged lookaheads)")
+        for i, I in enumerate(clr_states):
+            st.text(clr.state_lr1_str_merged_lookaheads(i, I))
+
+        st.subheader("GOTO transitions (CLR)")
+        st.text(clr.transitions_to_str(clr_trans))
+
+        st.subheader("CLR Parsing Table")
+        cols = ["State"] + (terms + ["$"]) + [A for A in nts if A != nts[0]]
+        rows_clr = []
+        for i in range(len(ACTION_CLR)):
+            rows_clr.append(
+                [f"I{i}"] +
+                [str(ACTION_CLR[i].get(a, "")) for a in (terms + ["$"])] +
+                [str(GOTO_CLR[i].get(A, "")) for A in [A for A in nts if A != nts[0]]]
+            )
+        df_clr = pd.DataFrame(rows_clr, columns=cols, dtype="string")
+        st.table(df_clr)
+        if clr_conf:
+            st.error("CLR conflicts present; entries may show shift/reduce or reduce/reduce collisions.")
+            for i, sym, old, new in clr_conf:
+                st.write(f"I{i}, on '{sym}': {old} vs {new}")
+        else:
+            st.success("No conflicts in CLR table.")
+
+        st.subheader("CLR indices mapped to LALR labels")
+        st.text(", ".join(f"I{lab}" for lab in sequence_labels))
+
+        if not merged_flag:
+            st.info("No sets to merge; LALR equals CLR.")
+        else:
+            st.subheader("LALR merged item sets")
+            for mi in range(len(lalr_states)):
+                lab = merged_idx_to_label[mi]
+                st.text(clr.state_str_with_label(lab, lalr_states[mi]))
+            st.text(clr.transitions_str_labeled(lalr_trans, merged_idx_to_label))
+
+        st.subheader("LALR(1) Parsing Table (labeled rows)")
+        df_lalr = pd.DataFrame(rows, columns=headers, dtype="string")
+        st.table(df_lalr)
+        if lalr_conf:
+            st.error("LALR conflicts present; entries may show shift/reduce or reduce/reduce collisions.")
+            for i, sym, old, new in lalr_conf:
+                st.write(f"I{merged_idx_to_label[i]}, on '{sym}': {old} vs {new}")
+        else:
+            st.success("No conflicts in LALR table.")
+
+        # Enable parsing if at least one table is conflict-free
+        clr_ok = len(clr_conf) == 0
+        lalr_ok = len(lalr_conf) == 0
+
+        if not clr_ok and not lalr_ok:
+            st.warning("Both CLR and LALR tables have conflicts. Parsing is disabled.")
+        else:
+            parse_str3 = st.text_input("Enter input string to parse (without $)", key="parse_input_clr")
+            if st.button("Parse with CLR/LALR tables", key="parse_btn_clr"):
+                if not parse_str3.strip():
+                    st.warning("Please enter a non-empty string.")
+                else:
+                    if clr_ok:
+                        st.subheader("CLR parse trace")
+                        tr = clr.parse_with_rnums(parse_str3.strip(), ACTION_CLR, GOTO_CLR, prod_list)
+                        st.code(f"{'STATE STACK':<24} | {'INPUT':<18} | ACTION", language="text")
+                        for stck, inp, act in tr:
+                            st.code(f"{stck:<24} | {inp:<18} | {act}", language="text")
+                    else:
+                        st.info("Skipping CLR parse due to conflicts.")
+
+                    if lalr_ok:
+                        st.subheader("LALR(1) parse trace")
+                        tr = clr.parse_with_rnums(parse_str3.strip(), ACTION_LALR, GOTO_LALR, prod_list)
+                        st.code(f"{'STATE STACK':<24} | {'INPUT':<18} | ACTION", language="text")
+                        for stck, inp, act in tr:
+                            st.code(f"{stck:<24} | {inp:<18} | {act}", language="text")
+                    else:
+                        st.info("Skipping LALR(1) parse due to conflicts.")
+
+
+
+
 
 st.caption("Develop by Dharmik...")

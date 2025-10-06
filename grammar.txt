@@ -1,2 +1,3 @@
-S -> AA
- A -> aA|b
+S-> AaAb | BbBa
+A-> ε
+B -> ε

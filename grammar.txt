@@ -1,3 +1,2 @@
-S -> AaBb | BbAa
-A -> ε
-B -> ε
+S -> iEtS | iEtSeS | a
+E -> b | a

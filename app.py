@@ -1294,6 +1294,8 @@ import ll1  # LL(1) features
 import lr0_slr1 as lr  # LR(0)/SLR(1) features
 import clr_lalr as clr  # NEW: CLR/LALR(1) features
 import pandas as pd
+import graphviz
+
 
 # -------------------- Validation --------------------
 def validate_grammar_text(text: str):
@@ -1452,12 +1454,30 @@ if st.button("Run", key="run_btn"):
             "ACTION1": ACTION1, "GOTO1": GOTO1, "terms1": terms1, "nts1": nts1, "slr_conflicts": slr_conflicts,
             "follow": follow,
         }
-    
-    
+
+        # st.subheader("LR(0) Automaton Diagram")
+        # diagram = lr.render_lr_automaton(
+        #     S["states"],
+        #     S["trans"],
+        #     lambda idx, state: lr.state_to_str(idx, state, S["nt_index"], S["prod_index"])
+        # )
+        # st.graphviz_chart(diagram)
+        S = st.session_state.get("lr")
+        if not isinstance(S, dict):
+            st.warning("LR(0)/SLR(1) structures have not been built yet. Run the analysis first.")
+        else:
+            st.subheader("LR(0) Automaton Diagram")
+            diagram = lr.render_lr_automaton(
+                S["states"],
+                S["trans"],
+                lambda idx, state: lr.state_to_str(idx, state, S["nt_index"], S["prod_index"])
+            )
+        st.graphviz_chart(diagram)
+        
     elif action == "CLR/LALR(1) + Parse":
         # Build CLR/LALR artifacts
         Gstr = clr.read_strings("grammar.txt")
-        Gaug, S_dash, S = clr.augment_grammar(Gstr)
+        Gaug, S_dash, S0 = clr.augment_grammar(Gstr)
         Glst = clr.to_symbol_lists(Gaug)
 
         # CLR canonical collection
@@ -1468,21 +1488,23 @@ if st.button("Run", key="run_btn"):
         prod_num, prod_list = clr.number_productions(Gaug, Glst)
 
         # CLR table
-        ACTION_CLR, GOTO_CLR, terms, nts, clr_conf = clr.build_lr1_table(Glst, S_dash, clr_states, clr_trans, prod_num)
+        ACTION_CLR, GOTO_CLR, terms, nts, clr_conf = clr.build_lr1_table(
+            Glst, S_dash, clr_states, clr_trans, prod_num
+        )
 
         # Merge CLR -> LALR
         (lalr_states, lalr_trans,
-         clr_to_merged_idx, merged_idx_to_label,
-         sequence_labels, merged_flag) = clr.merge_clr_with_labels(clr_states, clr_trans)
+        clr_to_merged_idx, merged_idx_to_label,
+        sequence_labels, merged_flag) = clr.merge_clr_with_labels(clr_states, clr_trans)
 
         # LALR labeled table rows
         ACTION_LALR, GOTO_LALR, terms2, nts2, lalr_conf, headers, rows = clr.build_lalr_table_labeled(
             Glst, S_dash, lalr_states, lalr_trans, merged_idx_to_label, prod_num
         )
 
-        # Cache everything
+        # Store everything in session state for later use (e.g., UI traces, diagrams)
         st.session_state.clr = {
-            "Gaug": Gaug, "Glst": Glst, "S_dash": S_dash, "S": S,
+            "Gaug": Gaug, "Glst": Glst, "S_dash": S_dash, "S": S0,
             "first": first,
             "clr_states": clr_states, "clr_trans": clr_trans,
             "ACTION_CLR": ACTION_CLR, "GOTO_CLR": GOTO_CLR, "terms": terms, "nts": nts, "clr_conf": clr_conf,
@@ -1491,7 +1513,55 @@ if st.button("Run", key="run_btn"):
             "merged_idx_to_label": merged_idx_to_label, "sequence_labels": sequence_labels, "merged_flag": merged_flag,
             "ACTION_LALR": ACTION_LALR, "GOTO_LALR": GOTO_LALR, "terms2": terms2, "nts2": nts2,
             "lalr_conf": lalr_conf, "headers": headers, "rows": rows,
-        }
+            # Optionally pre-render diagrams for CLR/LALR:
+            # (call this only if you have the LR automaton diagram function shared)
+            "diagram_clr": clr.render_lr_automaton(
+                clr_states, clr_trans, clr.state_lr1_str_merged_lookaheads
+            ),
+            "diagram_lalr": clr.render_lr_automaton(
+                lalr_states, lalr_trans,
+                lambda idx, state: clr.state_str_with_label(merged_idx_to_label[idx], state)
+            )
+    }
+
+    # elif action == "CLR/LALR(1) + Parse":
+    #     # Build CLR/LALR artifacts
+    #     Gstr = clr.read_strings("grammar.txt")
+    #     Gaug, S_dash, S = clr.augment_grammar(Gstr)
+    #     Glst = clr.to_symbol_lists(Gaug)
+
+    #     # CLR canonical collection
+    #     first = clr.compute_first(Glst)
+    #     clr_states, clr_trans = clr.canonical_lr1(Glst, S_dash, first)
+
+    #     # Production numbering
+    #     prod_num, prod_list = clr.number_productions(Gaug, Glst)
+
+    #     # CLR table
+    #     ACTION_CLR, GOTO_CLR, terms, nts, clr_conf = clr.build_lr1_table(Glst, S_dash, clr_states, clr_trans, prod_num)
+
+    #     # Merge CLR -> LALR
+    #     (lalr_states, lalr_trans,
+    #      clr_to_merged_idx, merged_idx_to_label,
+    #      sequence_labels, merged_flag) = clr.merge_clr_with_labels(clr_states, clr_trans)
+
+    #     # LALR labeled table rows
+    #     ACTION_LALR, GOTO_LALR, terms2, nts2, lalr_conf, headers, rows = clr.build_lalr_table_labeled(
+    #         Glst, S_dash, lalr_states, lalr_trans, merged_idx_to_label, prod_num
+    #     )
+
+    #     # Cache everything
+    #     st.session_state.clr = {
+    #         "Gaug": Gaug, "Glst": Glst, "S_dash": S_dash, "S": S,
+    #         "first": first,
+    #         "clr_states": clr_states, "clr_trans": clr_trans,
+    #         "ACTION_CLR": ACTION_CLR, "GOTO_CLR": GOTO_CLR, "terms": terms, "nts": nts, "clr_conf": clr_conf,
+    #         "prod_num": prod_num, "prod_list": prod_list,
+    #         "lalr_states": lalr_states, "lalr_trans": lalr_trans,
+    #         "merged_idx_to_label": merged_idx_to_label, "sequence_labels": sequence_labels, "merged_flag": merged_flag,
+    #         "ACTION_LALR": ACTION_LALR, "GOTO_LALR": GOTO_LALR, "terms2": terms2, "nts2": nts2,
+    #         "lalr_conf": lalr_conf, "headers": headers, "rows": rows,
+    #     }
 
 
 # -------------------- LL(1) Section (stable across reruns) --------------------
@@ -1686,6 +1756,22 @@ if st.session_state.get("action") == "CLR/LALR(1) + Parse":
         st.subheader("Augmented grammar")
         for A, Ps in Gaug.items():
             st.write(f"{A} -> {' | '.join(Ps)}")
+
+        #--------------------------
+        st.subheader("CLR(1) Automaton Diagram")
+        clr_diagram = clr.render_lr_automaton(
+            S["clr_states"], S["clr_trans"],
+            clr.state_lr1_str_merged_lookaheads
+        )
+        st.graphviz_chart(clr_diagram)
+
+        st.subheader("LALR(1) Automaton Diagram")
+        lalr_diagram = clr.render_lr_automaton(
+            S["lalr_states"], S["lalr_trans"],
+            lambda idx, state: clr.state_str_with_label(S["merged_idx_to_label"][idx], state)
+        )
+        st.graphviz_chart(lalr_diagram)
+        #--------------------------
 
         st.subheader("CLR item sets (merged lookaheads)")
         for i, I in enumerate(clr_states):

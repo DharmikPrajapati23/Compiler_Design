@@ -1827,6 +1827,7 @@
 # clr_lalr.py
 # -*- coding: utf-8 -*-
 from collections import defaultdict, deque
+import graphviz
 
 # ---------- IO and tokenization ----------
 
@@ -2332,9 +2333,54 @@ def parse_with_rnums(input_string, ACTION, GOTO, prod_list):
 #         print("{:<24} | {:<18} | {}".format(stack_str, input_str, act))
 
 
+
+
+
+#---------Diagram---------
+def render_lr_automaton(states, trans, state_label_fn):
+    """
+    Build and return a Graphviz Digraph for LR automaton.
+    states: list of canonical item sets
+    trans: dict (src, symbol) -> tgt
+    state_label_fn: function to stringify a state (must accept (idx, state))
+    """
+    import graphviz
+    g = graphviz.Digraph(format="png")
+    g.attr(rankdir="LR")  # Left-to-right
+
+    for idx, state in enumerate(states):
+        label = state_label_fn(idx, state)
+        label = label.replace("\n", "\\n")  # Important for graphviz multiline labels
+        g.node(f"I{idx}", label=label, shape="ellipse")
+
+    for (src, sym), tgt in trans.items():
+        g.edge(f"I{src}", f"I{tgt}", label=str(sym))
+
+    return g
+
+
+# def render_lr_automaton(states, trans, state_label_fn):
+#     """
+#     Build and return a Graphviz Digraph for LR automaton.
+#     states: list of canonical item sets
+#     trans: dict (src, symbol) -> tgt
+#     state_label_fn: function to stringify a state (must accept (idx, state))
+#     """
+#     g = graphviz.Digraph(format="png")
+#     g.attr(rankdir="LR")  # LR: left-to-right
+
+#     # Add nodes with labels
+#     for idx, state in enumerate(states):
+#         label = state_label_fn(idx, state)
+#         g.node(f"I{idx}", label=label, shape="ellipse")
+
+#     # Add transitions (edges)
+#     for (src, sym), tgt in trans.items():
+#         g.edge(f"I{src}", f"I{tgt}", label=str(sym))
+
+#     return g
+
 # ---------- Main ----------
-
-
 
 if __name__ == "__main__":
     # ---- Load and augment ----
